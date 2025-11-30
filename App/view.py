@@ -1,12 +1,13 @@
 import sys
-
+from App import logic
+from tabulate import tabulate
 
 def new_logic():
     """
         Se crea una instancia del controlador
     """
     #TODO: Llamar la función de la lógica donde se crean las estructuras de datos
-    pass
+    return logic.new_logic()
 
 def print_menu():
     print("Bienvenido")
@@ -24,8 +25,74 @@ def load_data(control):
     Carga los datos
     """
     #TODO: Realizar la carga de datos
-    pass
+    print("Seleccione el tamaño del archivo que quiere cargar:\n")
+    print("1. 1000_cranes_mongolia_large.csv")
+    print("2. 1000_cranes_mongolia_small.csv")
+    print("3. 1000_cranes_mongolia_30pct.csv")
+    print("4. 1000_cranes_mongolia_80pct.csv\n")
 
+    tamano_archivo = int(input("Que tamaño de archivo quieres usar? (ingresa el número): "))
+    cranes_file = 1
+    if tamano_archivo == 1:
+        cranes_file = "1000_cranes_mongolia_large.csv"
+    if tamano_archivo == 2:
+        cranes_file = "1000_cranes_mongolia_small.csv"
+    if tamano_archivo == 3:
+        cranes_file = "1000_cranes_mongolia_30pct.csv"
+    if tamano_archivo == 4:
+        cranes_file = "1000_cranes_mongolia_80pct.csv"
+    
+    print("\nCargando información de los archivos ....\n")
+
+    datos, reporte = logic.load_data(control, cranes_file)
+    
+    # Datos comunes
+    grullas = reporte['general']['total_grullas']
+    eventos = reporte['general']['total_eventos']
+    rows_first = reporte['general']['rows_first']
+    rows_last = reporte['general']['rows_last']
+    headers = ["Identificador único", "Posición (lat, lon)", "Fecha de creación", "Grullas (tags)", "Conteo de eventos", "Dist. Hídrica Prom (km)"]
+
+    # REPORTE 1: GRAFO DE DISTANCIAS GEOGRÁFICAS
+    print("\n" + "="*40)
+    print("  GRAFO DE DISTANCIAS GEOGRÁFICAS") 
+    print("="*40)
+    print(f"Total Grullas reconocidas: {grullas}")
+    print(f"Total de eventos cargados: {eventos}")
+    print(f"Total de nodos del grafo: {reporte['distancia']['nodos']}")
+    print(f"Total de arcos en el grafo: {reporte['distancia']['arcos']}")
+    print("\n" + "="*40)
+    print("DETALLE DE NODOS (VÉRTICES)")
+    print("="*40 + "\n")
+
+    print("--- Primeros 5 Nodos ---")
+    print(tabulate(rows_first, headers=headers, tablefmt="psql"))
+    print("\n")
+    print("--- Últimos 5 Nodos ---")
+    print(tabulate(rows_last, headers=headers, tablefmt="psql"))
+    print("\n")
+
+    # REPORTE 2: GRAFO DE FUENTES HÍDRICAS
+    print("\n" + "="*40)
+    print("  GRAFO DE FUENTES HÍDRICAS") 
+    print("="*40)
+    print(f"Total Grullas reconocidas: {grullas}")
+    print(f"Total de eventos cargados: {eventos}")
+    print(f"Total de nodos del grafo: {reporte['agua']['nodos']}")
+    print(f"Total de arcos en el grafo: {reporte['agua']['arcos']}")
+    print("\n" + "="*40)
+    print("DETALLE DE NODOS (VÉRTICES)")
+    print("="*40 + "\n")
+    
+    # Imprimimos la misma tabla porque los nodos contienen la misma info base
+    print("--- Primeros 5 Nodos ---")
+    print(tabulate(rows_first, headers=headers, tablefmt="psql"))
+    print("\n")
+    print("--- Últimos 5 Nodos ---")
+    print(tabulate(rows_last, headers=headers, tablefmt="psql"))
+    print("\nCarga finalizada exitosamente.")
+    
+    return datos
 
 def print_data(control, id):
     """
@@ -95,7 +162,6 @@ def main():
         print_menu()
         inputs = input('Seleccione una opción para continuar\n')
         if int(inputs) == 0:
-            print("Cargando información de los archivos ....\n")
             data = load_data(control)
         elif int(inputs) == 1:
             print_req_1(control)

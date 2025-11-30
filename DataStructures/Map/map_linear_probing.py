@@ -25,6 +25,9 @@ def new_map(num_elements, load_factor, prime=109345121):
     return hash_table
 
 def put(my_map, key, value):
+    if my_map["current_factor"] >= my_map["limit_factor"]:
+        rehash(my_map)
+    
     start = mf.hash_value(my_map, key)
     occupied, pos = find_slot(my_map, key, start)
     if pos == -1:
@@ -33,6 +36,7 @@ def put(my_map, key, value):
     lt.change_info(table, pos, me.new_map_entry(key, value))
     if not occupied:
         my_map["size"] += 1
+        my_map["current_factor"] = my_map["size"] / my_map["capacity"]
     return my_map
 
 def contains(my_map, key):
