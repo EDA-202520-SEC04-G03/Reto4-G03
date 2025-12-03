@@ -129,7 +129,7 @@ def print_req_3(control):
     punto_origen = input("\nIngrese el identificador del punto migratorio de origen: ").strip()
     
     if not punto_origen:
-        print("\n❌ Error: Debe ingresar un punto de origen válido")
+        print("\n Error: Debe ingresar un punto de origen válido")
         return
     
     print(f"\nBuscando rutas migratorias desde el punto: {punto_origen}")
@@ -139,7 +139,7 @@ def print_req_3(control):
     
     # Verificar si hubo error
     if result.get("error"):
-        print(f"❌ {result['message']}")
+        print(f" {result['message']}")
         print(f"Tiempo de ejecución: {result['time']:.2f} ms\n")
         return
     
@@ -147,7 +147,7 @@ def print_req_3(control):
     print(f"Tiempo de ejecución: {result['time']:.2f} ms\n")
     
     if result["has_cycles"]:
-        print("⚠️  NO ES POSIBLE REALIZAR ORDEN TOPOLÓGICO")
+        print("  NO ES POSIBLE REALIZAR ORDEN TOPOLÓGICO")
         print("    El grafo contiene ciclos (las grullas regresan a puntos anteriores)\n")
         
         if result["cycle_example"]:
@@ -163,7 +163,7 @@ def print_req_3(control):
                 else:
                     print(f"  → Regresa a: {node} (completa el ciclo)")
             
-            print("\n⚠️  Debido a los ciclos, no se pueden identificar rutas migratorias únicas")
+            print("\n  Debido a los ciclos, no se pueden identificar rutas migratorias únicas")
             print("    desde el punto de origen especificado.")
     else:
         print("✓ El grafo es un DAG (Grafo Acíclico Dirigido)")
@@ -255,7 +255,7 @@ def print_req_3(control):
             if len(routes) > 5:
                 print(f"\n... y {len(routes) - 5} rutas adicionales desde el punto de origen")
         else:
-            print(f"❌ No se encontraron rutas migratorias desde el punto '{punto_origen}'")
+            print(f" No se encontraron rutas migratorias desde el punto '{punto_origen}'")
             print("   Posibles causas:")
             print("   - El punto no tiene conexiones salientes")
             print("   - El punto está aislado en el grafo")
@@ -292,7 +292,7 @@ def print_req_6(control):
     punto_origen = input("\nIngrese el identificador del punto migratorio de origen: ").strip()
     
     if not punto_origen:
-        print("\n❌ Error: Debe ingresar un punto de origen válido")
+        print("\n Error: Debe ingresar un punto de origen válido")
         return
     
     print(f"\n📊 Analizando el nicho biológico desde el punto: {punto_origen}")
@@ -304,7 +304,7 @@ def print_req_6(control):
     
     # Verificar si hubo error
     if result.get("error"):
-        print(f"❌ {result['message']}")
+        print(f" {result['message']}")
         print(f"Tiempo de ejecución: {result['time']:.2f} ms\n")
         return
     
@@ -321,7 +321,7 @@ def print_req_6(control):
     print()
     
     if result["total_subredes"] == 0:
-        print("⚠️  No se identificaron subredes hídricas en el grafo.")
+        print("  No se identificaron subredes hídricas en el grafo.")
         return
     
     # Mostrar las 5 subredes más grandes

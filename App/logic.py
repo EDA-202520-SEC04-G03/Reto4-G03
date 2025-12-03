@@ -31,6 +31,11 @@ def new_logic():
     }
     return catalog
 
+def safe_event_id(event):
+    if "THIS:" in event:
+        event = event.replace("THIS:", "").strip()
+    return event
+
 
 def haversine(lat1, lon1, lat2, lon2):
     
@@ -48,6 +53,20 @@ def haversine(lat1, lon1, lat2, lon2):
 def cmp_function(element1, element2):
     if element1 == element2:
         return 0
+
+def compare_by_date_id(row1, row2):
+    """
+    Compara fechas. Si son iguales, desempata por ID.
+    Retorna True si row1 es MENOR (más antiguo) que row2.
+    """
+    # Usamos las llaves que tú creaste en el pre-procesamiento
+    t1 = row1['timestamp_actualizado'] 
+    t2 = row2['timestamp_actualizado']
+    
+    if t1 < t2:
+        return True
+    return False
+    
 
 def format_date(date):
     date.strip()
@@ -93,11 +112,21 @@ def load_data(catalog, filename):
     path = os.path.join(data_dir, filename)
     file = open(path, encoding="utf-8")
     reader = csv.DictReader(file)
+    
+    lista_filas = lt.new_list()
+    for row in reader:
+        # Pre-procesamos la fecha una sola vez para eficiencia
+        event = safe_event_id(row["event-id"])
+        row["event-id-safe"] = event
+        row["timestamp_actualizado"] = format_date(row["timestamp"])
+        lt.add_last(lista_filas, row)
+    
+    lista_filas = lt.merge_sort(lista_filas, compare_by_date_id)
 
     id_nodo_actual = None 
     # Para no llamar a get_vertex a cada rato
     info_nodo_actual = None 
-
+    
     # Capacidad inicial para mapas auxiliares grandes
     init_cap = 2003
      # Capacidad inicial para sub-mapas auxiliares 
@@ -109,7 +138,7 @@ def load_data(catalog, filename):
 
     # Acumuladores de Arcos 
     arcos_distancia = mp.new_map(init_cap, load_factor) 
-    arcos_agua = mp.new_map(init_cap, load_factor)  
+    conexiones_agua = mp.new_map(init_cap, load_factor)
     
     # Mapa Auxiliar de Eventos (Para saber a qué nodo pertenece el anterior)
     mapa_eventos = mp.new_map(init_cap, load_factor)
@@ -119,12 +148,15 @@ def load_data(catalog, filename):
     # Lista para guardar IDs en orden de creación
     lista_orden_creacion = lt.new_list() 
     
-    for row in reader:
+    size_datos = lt.size(lista_filas)
+    
+    for i in range(size_datos):
+        row = lt.get_element(lista_filas, i)
         # Contador de eventos
         total_eventos += 1
 
         event_id = row["event-id"]
-        timestamp = format_date(row["timestamp"])
+        timestamp = row["timestamp_actualizado"]
         loc_longitude = float(row["location-long"])
         loc_latitude = float(row["location-lat"])
         water_distance = float(row["comments"]) / 1000    
@@ -139,17 +171,17 @@ def load_data(catalog, filename):
         else:
             latitud_nodo = lt.get_element(info_nodo_actual, 0)
             longitud_nodo = lt.get_element(info_nodo_actual, 1)
-            timestamp_actual = lt.get_element(info_nodo_actual, 2)
+            timestamp_creacion_nodo = lt.get_element(info_nodo_actual, 2)
         
             distancia = haversine(latitud_nodo, longitud_nodo, loc_latitude, loc_longitude)
             # Calculamos la diferencia de tiempo
-            diferencia = timestamp_actual - timestamp
+            diferencia = timestamp_creacion_nodo - timestamp
             
             # Pasamos a segundos absolutos y luego dividimos por 3600 para tener HORAS
             diferencia_segundos = abs(diferencia.total_seconds()) 
     
 
-            if distancia <= 3.0 and diferencia_segundos <= 10800.00:
+            if distancia < 3.0 and diferencia_segundos < 10800.00:
                 # Preparamos los datos para la lista de eventos en formato (event-id, datos)
                 lista_eventos = lt.get_element(info_nodo_actual, 4)
 
@@ -265,19 +297,13 @@ def load_data(catalog, filename):
                         mp.put(sub_mapa, nodo_destino, lista_vals)
                     lt.add_last(lista_vals, dist_vuelo)
 
-                    # --- GESTION SEGURA DE ARCOS AGUA ---
-                    agua_destino = lt.get_element(info_nodo_actual, 5)
-                    
-                    sub_mapa_w = mp.get(arcos_agua, nodo_origen)
+                    sub_mapa_w = mp.get(conexiones_agua, nodo_origen)
                     if sub_mapa_w is None:
                         sub_mapa_w = mp.new_map(small_cap, load_factor)
-                        mp.put(arcos_agua, nodo_origen, sub_mapa_w)
-                        
-                    lista_vals_w = mp.get(sub_mapa_w, nodo_destino)
-                    if lista_vals_w is None:
-                        lista_vals_w = lt.new_list()
-                        mp.put(sub_mapa_w, nodo_destino, lista_vals_w)
-                    lt.add_last(lista_vals_w, agua_destino)
+                        mp.put(conexiones_agua, nodo_origen, sub_mapa_w)
+                    
+                    # Usamos '1' para marcar existencia
+                    mp.put(sub_mapa_w, nodo_destino, 1)
 
         # Actualizar estado de la grulla para la próxima vuelta
         nuevo_estado = lt.new_list()
@@ -314,27 +340,25 @@ def load_data(catalog, filename):
             digraph.add_edge(mov_migratorios, origen, destino, promedio)
 
     # Implementación de promedios en el grafo 2: Agua
-    lista_origenes_w = mp.key_set(arcos_agua)
+    lista_origenes_w = mp.key_set(conexiones_agua)
     size_origenes_w = lt.size(lista_origenes_w)
     
     for i in range(size_origenes_w):
         origen = lt.get_element(lista_origenes_w, i)
-        sub_mapa = mp.get(arcos_agua, origen)
+        sub_mapa = mp.get(conexiones_agua, origen)
         
         lista_destinos = mp.key_set(sub_mapa)
         size_destinos = lt.size(lista_destinos)
         
         for j in range(size_destinos):
             destino = lt.get_element(lista_destinos, j)
-            lista_pesos = mp.get(sub_mapa, destino)
             
-            suma = 0.0
-            n_vals = lt.size(lista_pesos)
-            for k in range(n_vals):
-                suma += lt.get_element(lista_pesos, k)
-            promedio = suma / n_vals
-            
-            digraph.add_edge(recursos_hidricos, origen, destino, promedio)
+            # Buscamos la info definitiva del vértice en el grafo
+            info_destino = digraph.get_vertex_information(recursos_hidricos, destino)
+            if info_destino:
+                # El elemento en índice 5 es el promedio de distancia al agua
+                peso_agua = lt.get_element(info_destino, 5) 
+                digraph.add_edge(recursos_hidricos, origen, destino, peso_agua)
 
     # Generación de reporte
 
