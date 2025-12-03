@@ -5,13 +5,14 @@ import math
 from datetime import datetime, date, time as dtime, timedelta
 from DataStructures.List import array_list as lt
 from DataStructures.Map import map_linear_probing as mp
-from DataStructures.Graph import bfs
+from DataStructures.Graph import bfs as bfs_algos
 from DataStructures.Graph import digraph
 from DataStructures.Graph import dfs
 from DataStructures.Graph import topological_sort as ts
 from DataStructures.Graph import vertex as vx
 from DataStructures.Graph import edge as edg
-from DataStructures.Stack import stack
+from DataStructures.Stack import stack 
+from DataStructures.Graph import dijkstra as dij
 
 
 csv.field_size_limit(2147483647)
@@ -96,7 +97,33 @@ def get_node_data_row(graph, n_id):
         return [n_id, f"({lat}, {lon})", str(dt), str(cranes_py), event_count, water_dist]
     return []
 
+def get_closest_node(graph, target_lat, target_lon):
+    """Encuentra el ID del nodo más cercano a una coordenada dada"""
+    closest_id = None
+    min_dist = float('inf')
 
+    keys = digraph.vertices(graph)
+
+    size_keys = lt.size(keys)
+    for i in range(size_keys):
+        v_id = lt.get_element(keys, i)
+        
+        # >>> CORRECCIÓN: Obtenemos la info del vértice (que es una LISTA, no un mapa)
+        v_data = digraph.get_vertex_information(graph, v_id)
+        
+        if v_data is not None:
+            # >>> CORRECCIÓN: Accedemos por Índices numéricos
+            # Índice 0: Latitud, Índice 1: Longitud
+            v_lat = lt.get_element(v_data, 0)
+            v_lon = lt.get_element(v_data, 1)
+            
+            dist = haversine(target_lat, target_lon, v_lat, v_lon)
+            
+            if dist < min_dist:
+                min_dist = dist
+                closest_id = v_id
+            
+    return closest_id, min_dist
 # Funciones para la carga de datos
 
 def load_data(catalog, filename):
@@ -407,12 +434,91 @@ def req_1(catalog):
     pass
 
 
-def req_2(catalog):
+def req_2(control, lat_origen, lon_origen, lat_destino, lon_destino, radio_km):
     """
-    Retorna el resultado del requerimiento 2
+    Retorna el resultado del requerimiento 4
     """
-    # TODO: Modificar el requerimiento 2
-    pass
+    
+    graph = control["mov_migratorios"]
+    
+    # Encontrar nodos más cercanos
+    start_node, _ = get_closest_node(graph, lat_origen, lon_origen)
+    end_node, _ = get_closest_node(graph, lat_destino, lon_destino)
+    
+    if not start_node or not end_node:
+        return {"error": True, "message": "No se encontraron nodos cercanos."}
+
+    # Ejecutar BFS
+    visited_map = bfs_algos.bfs(graph, start_node)
+    
+    # Reconstruir camino
+    path_stack = bfs_algos.path_to_bfs(end_node, visited_map)
+    
+    if path_stack is None:
+        return {"error": True, "message": "No existe camino entre los puntos seleccionados."}
+
+    # Procesar el camino para verificar el radio
+    path_details = []
+    last_node_in_radius = start_node
+    total_dist = 0.0
+    prev_node_data = None
+    
+    # Desempilar
+    while not stack.is_empty(path_stack):
+        node_id = stack.pop(path_stack)
+        node_data = digraph.get_vertex_information(graph, node_id)
+        
+        current_lat = lt.get_element(node_data, 0)
+        current_lon = lt.get_element(node_data, 1)
+        
+        # Calcular distancia acumulada del viaje
+        dist_segment = 0
+        if prev_node_data:
+            prev_lat = lt.get_element(prev_node_data, 0)
+            prev_lon = lt.get_element(prev_node_data, 1)
+            
+            dist_segment = haversine(prev_lat, prev_lon, current_lat, current_lon)
+            total_dist += dist_segment
+        
+        # Verificar radio con respecto al origen original
+        dist_to_origin = haversine(lat_origen, lon_origen, current_lat, current_lon)
+        
+        if dist_to_origin <= radio_km:
+            last_node_in_radius = node_id
+            
+        # Extraer info extra para tabla
+        grullas_adt = lt.get_element(node_data, 3)
+        eventos_adt = lt.get_element(node_data, 4)
+        
+        py_list = []
+        if grullas_adt:
+            size = lt.size(grullas_adt)
+            for i in range(size):
+                py_list.append(lt.get_element(grullas_adt, i))
+        
+        path_details.append({
+            "id": node_id,
+            "lat": current_lat,
+            "lon": current_lon,
+            "grullas": py_list,
+            "eventos": lt.size(eventos_adt),
+            "dist_next": 0 
+        })
+        
+        if len(path_details) > 1:
+            path_details[-2]["dist_next"] = dist_segment
+            
+        prev_node_data = node_data
+
+    return {
+        "error": False,
+        "total_puntos": len(path_details),
+        "total_distancia": total_dist,
+        "last_node_in_radius": last_node_in_radius,
+        "path_details": path_details,
+        "origen_id": start_node,
+        "destino_id": end_node
+    }
 
 
 def req_3(catalog, punto_origen):
@@ -462,7 +568,7 @@ def req_3(catalog, punto_origen):
         # === IDENTIFICAR RUTAS MIGRATORIAS DESDE EL PUNTO DE ORIGEN ===
         
         # Usar BFS desde el punto de origen para encontrar todos los nodos alcanzables
-        visited_map = bfs.bfs(mov_graph, punto_origen)
+        visited_map = bfs_algos.bfs(mov_graph, punto_origen)
         
         # Calcular grado de salida (para identificar sumideros)
         sinks = lt.new_list()
@@ -471,7 +577,7 @@ def req_3(catalog, punto_origen):
         for i in range(lt.size(vertices_keys)):
             key = lt.get_element(vertices_keys, i)
             # Es sumidero si tiene grado de salida 0 y es alcanzable desde origen
-            if digraph.degree(mov_graph, key) == 0 and bfs.has_path_to_bfs(key, visited_map):
+            if digraph.degree(mov_graph, key) == 0 and bfs_algos.has_path_to_bfs(key, visited_map):
                 lt.add_last(sinks, key)
         
         # Si no hay sumideros alcanzables, buscar los nodos más lejanos
@@ -479,7 +585,7 @@ def req_3(catalog, punto_origen):
             # Encontrar todos los nodos alcanzables
             for i in range(lt.size(vertices_keys)):
                 key = lt.get_element(vertices_keys, i)
-                if bfs.has_path_to_bfs(key, visited_map) and key != punto_origen:
+                if bfs_algos.has_path_to_bfs(key, visited_map) and key != punto_origen:
                     lt.add_last(sinks, key)
         
         # Encontrar rutas desde el origen a cada sumidero/destino
@@ -488,8 +594,8 @@ def req_3(catalog, punto_origen):
         for j in range(lt.size(sinks)):
             sink = lt.get_element(sinks, j)
             
-            if bfs.has_path_to_bfs(sink, visited_map):
-                path_stack = bfs.path_to_bfs(sink, visited_map)
+            if bfs_algos.has_path_to_bfs(sink, visited_map):
+                path_stack = bfs_algos.path_to_bfs(sink, visited_map)
                 
                 # Convertir stack a lista
                 path = []
@@ -572,12 +678,86 @@ def req_4(catalog):
     pass
 
 
-def req_5(catalog):
+def req_5(control, lat_origen, lon_origen, lat_destino, lon_destino, criterio):
     """
     Retorna el resultado del requerimiento 5
     """
-    # TODO: Modificar el requerimiento 5
-    pass
+    # 1. Seleccionar Grafo
+    graph = None
+    if criterio == "distancia":
+        graph = control["mov_migratorios"]
+    elif criterio == "agua":
+        graph = control["recursos_hidricos"]
+    else:
+        return {"error": True, "message": "Criterio inválido."}
+        
+    # 2. Encontrar nodos
+    start_node, _ = get_closest_node(graph, lat_origen, lon_origen)
+    end_node, _ = get_closest_node(graph, lat_destino, lon_destino)
+    
+    if not start_node or not end_node:
+        return {"error": True, "message": "Puntos fuera del rango."}
+
+    # 3. Ejecutar Dijkstra
+    dijkstra_res = dij.dijkstra(graph, start_node)
+        
+    costo_total = dij.dist_to(end_node, dijkstra_res)
+        
+    if costo_total == float('inf'):
+        return {"error": True, "message": "No existe camino viable."}
+             
+    path_stack = dij.path_to(end_node, dijkstra_res)
+        
+    # 4. Procesar resultados
+    path_details = []
+    total_segments = 0
+    prev_node_data = None
+    
+    while not stack.is_empty(path_stack):
+        node_id = stack.pop(path_stack)
+        node_data = digraph.get_vertex_information(graph, node_id)
+        
+        # CORRECCIÓN: Acceso por índices
+        lat = lt.get_element(node_data, 0)
+        lon = lt.get_element(node_data, 1)
+        grullas_adt = lt.get_element(node_data, 3)
+        
+        dist_segment = 0
+        if prev_node_data:
+            total_segments += 1
+            prev_lat = lt.get_element(prev_node_data, 0)
+            prev_lon = lt.get_element(prev_node_data, 1)
+            
+            dist_segment = haversine(prev_lat, prev_lon, lat, lon)
+            
+            if len(path_details) > 0:
+                path_details[-1]["dist_next"] = dist_segment
+        
+        py_list = []
+    
+        if grullas_adt:
+            size = lt.size(grullas_adt)
+            for i in range(size):
+                py_list.append(lt.get_element(grullas_adt, i))
+
+        path_details.append({
+            "id": node_id,
+            "lat": lat,
+            "lon": lon,
+            "grullas": py_list,
+            "dist_next": 0 
+        })
+        prev_node_data = node_data
+
+    return {
+        "error": False,
+        "costo_total": costo_total,
+        "total_puntos": len(path_details),
+        "total_segmentos": total_segments,
+        "path_details": path_details,
+        "origen_id": start_node,
+        "destino_id": end_node
+    }
 
 def req_6(catalog, punto_origen):
     """
@@ -643,7 +823,7 @@ def req_6(catalog, punto_origen):
         # Si el nodo no ha sido visitado, explorar su componente
         if not mp.get(visited_global, origen):
             # Usar BFS para encontrar todos los nodos alcanzables desde 'origen'
-            visited_map = bfs.bfs(water_graph, origen)
+            visited_map = bfs_algos.bfs(water_graph, origen)
             
             # Obtener todos los nodos de este componente
             componente_nodos = lt.new_list()
@@ -653,7 +833,7 @@ def req_6(catalog, punto_origen):
                 node_key = lt.get_element(vertices_keys, j)
                 
                 # Si el nodo es alcanzable desde origen, pertenece al componente
-                if bfs.has_path_to_bfs(node_key, visited_map):
+                if bfs_algos.has_path_to_bfs(node_key, visited_map):
                     lt.add_last(componente_nodos, node_key)
                     mp.put(visited_global, node_key, True)
             

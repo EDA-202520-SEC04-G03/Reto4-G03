@@ -108,13 +108,70 @@ def print_req_1(control):
     # TODO: Imprimir el resultado del requerimiento 1
     pass
 
+def format_row(item):
+    grullas_str = str(item['grullas'][:3]) if len(item['grullas']) > 3 else str(item['grullas'])
+    return [
+        item['id'][:15] + "...",
+        f"({item['lat']:.3f}, {item['lon']:.3f})",
+        grullas_str,
+        f"{item['dist_next']:.3f}"
+    ]
 
 def print_req_2(control):
     """
         Función que imprime la solución del Requerimiento 2 en consola
     """
     # TODO: Imprimir el resultado del requerimiento 2
-    pass
+    print("\n" + "="*80)
+    print(" REQ. 2: MOVIMIENTOS DE UN NICHO ALREDEDOR DE UN ÁREA (BFS)")
+    print("="*80)
+    
+    # Entradas
+    print("\nIngrese coordenadas de ORIGEN:")
+    lat_o = float(input(" Latitud: "))
+    lon_o = float(input(" Longitud: "))
+        
+    print("\nIngrese coordenadas de DESTINO:")
+    lat_d = float(input(" Latitud: "))
+    lon_d = float(input(" Longitud: "))
+        
+    radio = float(input("\nIngrese el RADIO del área de interés (km): "))
+        
+    print("\nProcesando con BFS...\n")
+        
+    # Llamada a lógica
+    result = logic.req_2(control, lat_o, lon_o, lat_d, lon_d, radio)
+
+    if result.get("error"):
+            print(f" Error: {result['message']}")
+            return
+    
+
+    # Resultados
+    print(f"✓ Camino encontrado")
+    print(f"Total puntos en el camino: {result['total_puntos']}")
+    print(f"Distancia total recorrida: {result['total_distancia']:.2f} km")
+    print(f"Último nodo dentro del radio ({radio} km): {result['last_node_in_radius']}")
+    print("-" * 80)
+        
+    # Tabla Detallada
+    detalles = result['path_details']
+    headers = ["ID Punto", "Posición", "Grullas", "Eventos", "Dist. Sig (km)"]
+    rows = []
+        
+    # Primeros 5
+    for item in detalles[:5]:
+        rows.append(format_row(item))
+            
+    if len(detalles) > 10:
+        rows.append(["...", "...", "...", "...", "..."])
+            
+    # Últimos 5 (evitando duplicados si la lista es corta)
+    start_idx = max(5, len(detalles) - 5)
+    for item in detalles[start_idx:]:
+        rows.append(format_row(item))
+             
+    print(tabulate(rows, headers=headers, tablefmt="psql"))
 
 
 def print_req_3(control):
@@ -275,8 +332,60 @@ def print_req_5(control):
         Función que imprime la solución del Requerimiento 5 en consola
     """
     # TODO: Imprimir el resultado del requerimiento 5
-    pass
+    print("\n" + "="*80)
+    print(" REQ. 5: RUTA MIGRATORIA MÁS EFICIENTE (DIJKSTRA)")
+    print("="*80)
+    
+    # Entradas
+    print("\nIngrese coordenadas de ORIGEN:")
+    lat_o = float(input(" Latitud: "))
+    lon_o = float(input(" Longitud: "))
+        
+    print("\nIngrese coordenadas de DESTINO:")
+    lat_d = float(input(" Latitud: "))
+    lon_d = float(input(" Longitud: "))
+        
+    print("\nSeleccione criterio de eficiencia:")
+    print(" 1. Distancia de desplazamiento")
+    print(" 2. Distancia a fuentes hídricas")
+    opt = input(" Opción (1/2): ")
+        
+    criterio = "distancia" if opt == "1" else "agua"
+        
+    print(f"\nCalculando ruta óptima por '{criterio}'...\n")
+        
+    # Llamada a lógica
+    result = logic.req_5(control, lat_o, lon_o, lat_d, lon_d, criterio)
 
+    if result.get("error"):
+            print(f" Error: {result['message']}")
+            return
+    
+    # Resultados Generales
+    print(f"✓ Ruta óptima encontrada")
+    print(f"Costo Total ({criterio}): {result['costo_total']:.4f}")
+    print(f"Total Puntos (Vértices): {result['total_puntos']}")
+    print(f"Total Segmentos (Arcos): {result['total_segmentos']}")
+    print("-" * 80)
+        
+    # Tabla
+    detalles = result['path_details']
+    headers = ["ID Punto", "Posición", "Grullas", "Dist. Geográfica Sig (km)"]
+    rows = []
+        
+    # Primeros 5
+    for item in detalles[:5]:
+        rows.append(format_row(item))
+            
+    if len(detalles) > 10:
+        rows.append(["...", "...", "...", "..."])
+            
+    # Últimos 5
+    start_idx = max(5, len(detalles) - 5)
+    for item in detalles[start_idx:]:
+        rows.append(format_row(item))
+             
+    print(tabulate(rows, headers=headers, tablefmt="psql"))
 
 def print_req_6(control):
     """
