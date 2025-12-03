@@ -121,9 +121,146 @@ def print_req_3(control):
     """
         Función que imprime la solución del Requerimiento 3 en consola
     """
-    # TODO: Imprimir el resultado del requerimiento 3
-    pass
-
+    print("\n" + "="*80)
+    print("  REQ. 3: IDENTIFICAR POSIBLES RUTAS MIGRATORIAS")
+    print("="*80)
+    
+    # Pedir el punto de origen al usuario
+    punto_origen = input("\nIngrese el identificador del punto migratorio de origen: ").strip()
+    
+    if not punto_origen:
+        print("\n❌ Error: Debe ingresar un punto de origen válido")
+        return
+    
+    print(f"\nBuscando rutas migratorias desde el punto: {punto_origen}")
+    print("Procesando...\n")
+    
+    result = logic.req_3(control, punto_origen)
+    
+    # Verificar si hubo error
+    if result.get("error"):
+        print(f"❌ {result['message']}")
+        print(f"Tiempo de ejecución: {result['time']:.2f} ms\n")
+        return
+    
+    print(f"Total de puntos migratorios en el grafo: {result['total_puntos']}")
+    print(f"Tiempo de ejecución: {result['time']:.2f} ms\n")
+    
+    if result["has_cycles"]:
+        print("⚠️  NO ES POSIBLE REALIZAR ORDEN TOPOLÓGICO")
+        print("    El grafo contiene ciclos (las grullas regresan a puntos anteriores)\n")
+        
+        if result["cycle_example"]:
+            print("Ejemplo de ciclo detectado:")
+            print("-" * 80)
+            cycle = result["cycle_example"]
+            print(f"Número de nodos en el ciclo: {len(cycle)}")
+            print("\nSecuencia del ciclo:")
+            
+            for i, node in enumerate(cycle):
+                if i < len(cycle) - 1:
+                    print(f"  {i+1}. Nodo: {node}")
+                else:
+                    print(f"  → Regresa a: {node} (completa el ciclo)")
+            
+            print("\n⚠️  Debido a los ciclos, no se pueden identificar rutas migratorias únicas")
+            print("    desde el punto de origen especificado.")
+    else:
+        print("✓ El grafo es un DAG (Grafo Acíclico Dirigido)")
+        print("  Es posible realizar ordenamiento topológico\n")
+        
+        routes = result["routes"]
+        
+        if routes:
+            print(f"Total de rutas migratorias desde '{punto_origen}': {result['total_rutas']}")
+            print("\n" + "="*80)
+            print("DETALLE DE LAS RUTAS (MOSTRANDO LAS 5 MÁS LARGAS)")
+            print("="*80 + "\n")
+            
+            # Mostrar las primeras 5 rutas (o menos si hay menos)
+            for idx, route in enumerate(routes[:5], 1):
+                print(f"\n{'─'*80}")
+                print(f"RUTA #{idx}")
+                print(f"{'─'*80}")
+                print(f"Total de puntos en la ruta: {route['total_points']}")
+                print(f"Total de individuos (grullas) que usan esta ruta: {route['total_cranes']}")
+                print(f"Distancia total de la ruta: {route['total_distance']:.2f} km")
+                print(f"\nOrigen: {route['origin']}")
+                print(f"Destino: {route['destination']}")
+                
+                # Mostrar primeros 5 y últimos 5 puntos
+                path_details = route['path_details']
+                
+                print(f"\nPuntos de la ruta (mostrando los 5 primeros y 5 últimos):")
+                
+                headers = ["#", "ID Punto", "Posición", "Grullas", "Eventos", "Dist. Agua (km)", "Dist. siguiente (km)"]
+                rows = []
+                
+                # Primeros 5
+                limit_first = min(5, len(path_details))
+                for i in range(limit_first):
+                    point = path_details[i]
+                    pos_str = f"({point['position'][0]:.4f}, {point['position'][1]:.4f})"
+                    dist_next = f"{point.get('distance_to_next', 'N/A'):.2f}" if isinstance(point.get('distance_to_next'), (int, float)) else "N/A"
+                    
+                    rows.append([
+                        i+1,
+                        point['id'][:20] + "..." if len(point['id']) > 20 else point['id'],
+                        pos_str,
+                        point['cranes_count'],
+                        point['events_count'],
+                        f"{point['water_distance']:.2f}",
+                        dist_next
+                    ])
+                
+                # Separador si hay más de 10 puntos
+                if len(path_details) > 10:
+                    rows.append(["...", "...", "...", "...", "...", "...", "..."])
+                    
+                    # Últimos 5
+                    start_last = max(limit_first, len(path_details) - 5)
+                    for i in range(start_last, len(path_details)):
+                        point = path_details[i]
+                        pos_str = f"({point['position'][0]:.4f}, {point['position'][1]:.4f})"
+                        dist_next = f"{point.get('distance_to_next', 'N/A'):.2f}" if isinstance(point.get('distance_to_next'), (int, float)) else "N/A"
+                        
+                        rows.append([
+                            i+1,
+                            point['id'][:20] + "..." if len(point['id']) > 20 else point['id'],
+                            pos_str,
+                            point['cranes_count'],
+                            point['events_count'],
+                            f"{point['water_distance']:.2f}",
+                            dist_next
+                        ])
+                
+                print(tabulate(rows, headers=headers, tablefmt="psql"))
+                
+                # Mostrar las primeras 3 y últimas 3 grullas
+                cranes = route['cranes']
+                if len(cranes) <= 6:
+                    cranes_str = ", ".join(cranes)
+                else:
+                    cranes_str = ", ".join(cranes[:3]) + " ... " + ", ".join(cranes[-3:])
+                
+                print(f"\nGrullas que transitan (muestra): {cranes_str}")
+                
+                # Calcular distancia promedio a vértices vecinos
+                distances = [p.get('distance_to_next', 0) for p in path_details if 'distance_to_next' in p]
+                if distances:
+                    avg_distance = sum(distances) / len(distances)
+                    print(f"Distancia promedio entre puntos consecutivos: {avg_distance:.2f} km")
+            
+            # Resumen final
+            if len(routes) > 5:
+                print(f"\n... y {len(routes) - 5} rutas adicionales desde el punto de origen")
+        else:
+            print(f"❌ No se encontraron rutas migratorias desde el punto '{punto_origen}'")
+            print("   Posibles causas:")
+            print("   - El punto no tiene conexiones salientes")
+            print("   - El punto está aislado en el grafo")
+    
+    print("\n" + "="*80)
 
 def print_req_4(control):
     """
@@ -144,9 +281,123 @@ def print_req_5(control):
 def print_req_6(control):
     """
         Función que imprime la solución del Requerimiento 6 en consola
+        
+        Solicita al usuario el punto migratorio de origen para analizar las subredes
     """
-    # TODO: Imprimir el resultado del requerimiento 6
-    pass
+    print("\n" + "="*80)
+    print("  REQ. 6: IDENTIFICAR POSIBLES SUBREDES HÍDRICAS AISLADAS")
+    print("="*80)
+    
+    # Solicitar el punto de origen al usuario
+    punto_origen = input("\nIngrese el identificador del punto migratorio de origen: ").strip()
+    
+    if not punto_origen:
+        print("\n❌ Error: Debe ingresar un punto de origen válido")
+        return
+    
+    print(f"\n📊 Analizando el nicho biológico desde el punto: {punto_origen}")
+    print("   (Grafo con todos los puntos migratorios respecto a fuentes hídricas)")
+    print("\nProcesando identificación de subredes hídricas...")
+    print("Buscando componentes conectados (grupos aislados de grullas)...\n")
+    
+    result = logic.req_6(control, punto_origen)
+    
+    # Verificar si hubo error
+    if result.get("error"):
+        print(f"❌ {result['message']}")
+        print(f"Tiempo de ejecución: {result['time']:.2f} ms\n")
+        return
+    
+    print(f"✓ Análisis completado exitosamente")
+    print(f"Tiempo de ejecución: {result['time']:.2f} ms\n")
+    
+    print("="*80)
+    print("RESUMEN DEL NICHO BIOLÓGICO")
+    print("="*80)
+    print(f"Punto migratorio de origen analizado: {result.get('punto_origen', 'N/A')}")
+    print(f"Total de puntos migratorios en el grafo: {result.get('total_puntos', 0)}")
+    print(f"Total de arcos (conexiones) en el grafo: {result.get('total_arcos', 0)}")
+    print(f"Total de subredes hídricas identificadas: {result.get('total_subredes', 0)}")
+    print()
+    
+    if result["total_subredes"] == 0:
+        print("⚠️  No se identificaron subredes hídricas en el grafo.")
+        return
+    
+    # Mostrar las 5 subredes más grandes
+    print("="*80)
+    print("DETALLE DE LAS 5 SUBREDES MÁS GRANDES")
+    print("="*80 + "\n")
+    
+    subredes_mostrar = result.get("subredes", [])[:5]
+    
+    for subred in subredes_mostrar:
+        print(f"{'─'*80}")
+        print(f"SUBRED #{subred['id']}")
+        print(f"{'─'*80}")
+        print(f"Total de puntos migratorios: {subred['total_puntos']}")
+        print(f"Total de individuos (grullas): {subred['total_grullas']}")
+        
+        # Mostrar límites geográficos
+        print(f"\nLímites geográficos de la subred:")
+        print(f"  Latitud  → Máxima: {subred['lat_max']:.4f} | Mínima: {subred['lat_min']:.4f}")
+        print(f"  Longitud → Máxima: {subred['lon_max']:.4f} | Mínima: {subred['lon_min']:.4f}")
+        print(f"  Longitud latitudinal: {subred['longitud_lat']:.4f} grados")
+        print(f"  Longitud longitudinal: {subred['longitud_lon']:.4f} grados")
+        
+        # Mostrar información de grullas
+        print(f"\nIndividuos que utilizan esta subred:")
+        if len(subred['grullas_primeros_3']) <= 3 and subred['total_grullas'] <= 6:
+            # Si hay 6 o menos grullas, mostrar todas
+            print(f"  Grullas: {', '.join(subred['grullas_primeros_3'])}")
+        else:
+            # Mostrar primeros 3 y últimos 3
+            primeros = ', '.join(subred['grullas_primeros_3'])
+            ultimos = ', '.join(subred['grullas_ultimos_3'])
+            print(f"  Primeros 3: {primeros}")
+            print(f"  Últimos 3: {ultimos}")
+        
+        # Tabla con primeros 3 puntos migratorios
+        print(f"\nPrimeros 3 puntos migratorios de la subred:")
+        headers_nodos = ["ID Punto", "Posición (lat, lon)", "Fecha", "# Grullas", "# Eventos", "Dist. Agua (km)"]
+        rows_primeros = []
+        
+        for nodo in subred['primeros_3']:
+            rows_primeros.append([
+                nodo['id'][:25] + "..." if len(nodo['id']) > 25 else nodo['id'],
+                f"({nodo['lat']:.4f}, {nodo['lon']:.4f})",
+                str(nodo['timestamp']),
+                nodo['cranes_count'],
+                nodo['events_count'],
+                f"{nodo['water_distance']:.2f}"
+            ])
+        
+        print(tabulate(rows_primeros, headers=headers_nodos, tablefmt="psql"))
+        
+        # Tabla con últimos 3 puntos migratorios
+        print(f"\nÚltimos 3 puntos migratorios de la subred:")
+        rows_ultimos = []
+        
+        for nodo in subred['ultimos_3']:
+            rows_ultimos.append([
+                nodo['id'][:25] + "..." if len(nodo['id']) > 25 else nodo['id'],
+                f"({nodo['lat']:.4f}, {nodo['lon']:.4f})",
+                str(nodo['timestamp']),
+                nodo['cranes_count'],
+                nodo['events_count'],
+                f"{nodo['water_distance']:.2f}"
+            ])
+        
+        print(tabulate(rows_ultimos, headers=headers_nodos, tablefmt="psql"))
+        print()
+    
+    # Resumen final
+    if result.get('total_subredes', 0) > 5:
+        print(f"\n{'='*80}")
+        print(f"... y {result['total_subredes'] - 5} subredes adicionales identificadas")
+        print("(Se muestran solo las 5 más grandes)")
+    
+    print("\n" + "="*80)
 
 # Se crea la lógica asociado a la vista
 control = new_logic()
@@ -178,7 +429,7 @@ def main():
         elif int(inputs) == 5:
             print_req_5(control)
 
-        elif int(inputs) == 5:
+        elif int(inputs) == 6:
             print_req_6(control)
 
         elif int(inputs) == 7:
