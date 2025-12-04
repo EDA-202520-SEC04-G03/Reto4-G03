@@ -406,24 +406,28 @@ def load_data(catalog, filename):
         n_id = lt.get_element(lista_orden_creacion, i)
         last_5_rows.append(get_node_data_row(mov_migratorios, n_id))
     
+    end = get_time()
+    tiempo_total = delta_time(start, end)
+
     reporte = {
         "general": {
             "total_grullas": mp.size(mapa_estado_grullas),
             "total_eventos": total_eventos,
             "rows_first": first_5_rows,
-            "rows_last": last_5_rows
+            "rows_last": last_5_rows,
+            "tiempo_carga": tiempo_total 
         },
         "distancia": {
             "nodos": mp.size(digraph.vertices(mov_migratorios)),
             "arcos": digraph.size(mov_migratorios)
         },
-        "agua": {
-            "nodos": mp.size(digraph.vertices(recursos_hidricos)),
-            "arcos": digraph.size(recursos_hidricos)
+        "agua": { 
+             "nodos": mp.size(digraph.vertices(recursos_hidricos)),
+             "arcos": digraph.size(recursos_hidricos)
         }
     }
-    return catalog, reporte
-
+    
+    return lista_filas, reporte
 # Funciones de consulta sobre el catálogo
 
 def req_1(catalog):
@@ -438,6 +442,7 @@ def req_2(control, lat_origen, lon_origen, lat_destino, lon_destino, radio_km):
     """
     Retorna el resultado del requerimiento 4
     """
+    start = get_time()
     
     graph = control["mov_migratorios"]
     
@@ -509,6 +514,9 @@ def req_2(control, lat_origen, lon_origen, lat_destino, lon_destino, radio_km):
             path_details[-2]["dist_next"] = dist_segment
             
         prev_node_data = node_data
+    
+    end = get_time()
+    tiempo_total = delta_time(start, end)
 
     return {
         "error": False,
@@ -517,7 +525,8 @@ def req_2(control, lat_origen, lon_origen, lat_destino, lon_destino, radio_km):
         "last_node_in_radius": last_node_in_radius,
         "path_details": path_details,
         "origen_id": start_node,
-        "destino_id": end_node
+        "destino_id": end_node,
+        "time": tiempo_total 
     }
 
 
@@ -682,6 +691,7 @@ def req_5(control, lat_origen, lon_origen, lat_destino, lon_destino, criterio):
     """
     Retorna el resultado del requerimiento 5
     """
+    start = get_time()
     # 1. Seleccionar Grafo
     graph = None
     if criterio == "distancia":
@@ -749,6 +759,9 @@ def req_5(control, lat_origen, lon_origen, lat_destino, lon_destino, criterio):
         })
         prev_node_data = node_data
 
+    end = get_time()
+    tiempo_total = delta_time(start, end)
+
     return {
         "error": False,
         "costo_total": costo_total,
@@ -756,7 +769,8 @@ def req_5(control, lat_origen, lon_origen, lat_destino, lon_destino, criterio):
         "total_segmentos": total_segments,
         "path_details": path_details,
         "origen_id": start_node,
-        "destino_id": end_node
+        "destino_id": end_node,
+        "time": tiempo_total
     }
 
 def req_6(catalog, punto_origen):

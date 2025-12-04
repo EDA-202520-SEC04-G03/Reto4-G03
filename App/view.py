@@ -49,6 +49,7 @@ def load_data(control):
     # Datos comunes
     grullas = reporte['general']['total_grullas']
     eventos = reporte['general']['total_eventos']
+    tiempo = reporte['general']['tiempo_carga']
     rows_first = reporte['general']['rows_first']
     rows_last = reporte['general']['rows_last']
     headers = ["Identificador único", "Posición (lat, lon)", "Fecha de creación", "Grullas (tags)", "Conteo de eventos", "Dist. Hídrica Prom (km)"]
@@ -57,6 +58,7 @@ def load_data(control):
     print("\n" + "="*40)
     print("  GRAFO DE DISTANCIAS GEOGRÁFICAS") 
     print("="*40)
+    print(f"Tiempo de carga: {tiempo:.2f} ms") 
     print(f"Total Grullas reconocidas: {grullas}")
     print(f"Total de eventos cargados: {eventos}")
     print(f"Total de nodos del grafo: {reporte['distancia']['nodos']}")
@@ -76,6 +78,7 @@ def load_data(control):
     print("\n" + "="*40)
     print("  GRAFO DE FUENTES HÍDRICAS") 
     print("="*40)
+    print(f"Tiempo de carga: {tiempo:.2f} ms") 
     print(f"Total Grullas reconocidas: {grullas}")
     print(f"Total de eventos cargados: {eventos}")
     print(f"Total de nodos del grafo: {reporte['agua']['nodos']}")
@@ -146,9 +149,11 @@ def print_req_2(control):
             print(f" Error: {result['message']}")
             return
     
-
     # Resultados
-    print(f"✓ Camino encontrado")
+    print(f"Camino encontrado")
+    print(f"Tiempo de ejecución: {result['time']:.2f} ms") 
+    print(f"Total puntos en el camino: {result['total_puntos']}")
+    print(f"Camino encontrado")
     print(f"Total puntos en el camino: {result['total_puntos']}")
     print(f"Distancia total recorrida: {result['total_distancia']:.2f} km")
     print(f"Último nodo dentro del radio ({radio} km): {result['last_node_in_radius']}")
@@ -362,7 +367,8 @@ def print_req_5(control):
             return
     
     # Resultados Generales
-    print(f"✓ Ruta óptima encontrada")
+    print(f"Ruta óptima encontrada")
+    print(f"Tiempo de ejecución: {result['time']:.2f} ms")
     print(f"Costo Total ({criterio}): {result['costo_total']:.4f}")
     print(f"Total Puntos (Vértices): {result['total_puntos']}")
     print(f"Total Segmentos (Arcos): {result['total_segmentos']}")
