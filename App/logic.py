@@ -705,13 +705,13 @@ def req_2(control, lat_origen, lon_origen, lat_destino, lon_destino, radio_km):
     }
 
 
-def req_3(catalog, punto_origen):
+def req_3(catalog):
     """
-    Retorna el resultado del requerimiento 3
-    Identifica posibles rutas migratorias desde un punto de origen dado
+    REQ. 3: Identifica posibles rutas migratorias dentro del nicho biológico
+    
+    NO requiere parámetros de entrada - analiza automáticamente todo el grafo
     
     :param catalog: Catálogo con los grafos
-    :param punto_origen: ID del punto migratorio de origen
     :returns: Diccionario con información de las rutas
     """
     start = get_time()
@@ -719,131 +719,172 @@ def req_3(catalog, punto_origen):
     # Trabajamos con el grafo de movimientos migratorios
     mov_graph = catalog["mov_migratorios"]
     
-    # Verificar si el punto de origen existe
-    if not digraph.contains_vertex(mov_graph, punto_origen):
+    # Verificar que el grafo tenga nodos
+    if digraph.order(mov_graph) == 0:
         return {
             "error": True,
-            "message": f"El punto migratorio '{punto_origen}' no existe en el grafo",
+            "message": "El grafo de movimientos migratorios esta vacio",
             "time": delta_time(start, get_time())
         }
     
-    # Verificar si el grafo tiene ciclos
-    has_cycles, cycle_example = ts.has_cycle(mov_graph)
-    
     result = {
         "error": False,
-        "punto_origen": punto_origen,
         "total_puntos": digraph.order(mov_graph),
-        "has_cycles": has_cycles,
+        "has_cycles": False,
         "cycle_example": None,
         "topo_order": None,
         "routes": []
     }
     
+    # Verificar si el grafo tiene ciclos
+    has_cycles, cycle_example = ts.has_cycle(mov_graph)
+    result["has_cycles"] = has_cycles
+    result["cycle_example"] = cycle_example
+    
     if has_cycles:
-        # Si hay ciclos, mostrar ejemplo
-        result["cycle_example"] = cycle_example
-        result["message"] = "No es posible realizar orden topológico debido a ciclos en el grafo"
+        # Si hay ciclos, solo mostrar el ciclo de ejemplo
+        result["message"] = "No es posible realizar orden topologico debido a ciclos en el grafo"
     else:
         # Si no hay ciclos, realizar ordenamiento topológico
         topo_order = ts.topological_sort(mov_graph)
-        result["topo_order"] = topo_order
         
-        # === IDENTIFICAR RUTAS MIGRATORIAS DESDE EL PUNTO DE ORIGEN ===
+        # Convertir lista ADT a lista Python para facilitar el manejo
+        topo_list_py = []
+        for i in range(lt.size(topo_order)):
+            topo_list_py.append(lt.get_element(topo_order, i))
         
-        # Usar BFS desde el punto de origen para encontrar todos los nodos alcanzables
-        visited_map = bfs_algos.bfs(mov_graph, punto_origen)
+        result["topo_order"] = topo_list_py
         
-        # Calcular grado de salida (para identificar sumideros)
-        sinks = lt.new_list()
+        # === IDENTIFICAR TODAS LAS RUTAS MIGRATORIAS ===
+        
+        # Identificar todos los nodos fuente (sin arcos entrantes)
         vertices_keys = digraph.vertices(mov_graph)
+        sources = lt.new_list()
         
         for i in range(lt.size(vertices_keys)):
-            key = lt.get_element(vertices_keys, i)
-            # Es sumidero si tiene grado de salida 0 y es alcanzable desde origen
-            if digraph.degree(mov_graph, key) == 0 and bfs_algos.has_path_to_bfs(key, visited_map):
-                lt.add_last(sinks, key)
+            node = lt.get_element(vertices_keys, i)
+            # Un nodo es fuente si ningún otro nodo apunta hacia él
+            is_source = True
+            
+            # Verificar si algún nodo tiene un arco hacia este nodo
+            for j in range(lt.size(vertices_keys)):
+                other_node = lt.get_element(vertices_keys, j)
+                if other_node != node:
+                    edge = digraph.get_edge(mov_graph, other_node, node)
+                    if edge is not None:
+                        is_source = False
+                        break
+            
+            if is_source:
+                lt.add_last(sources, node)
         
-        # Si no hay sumideros alcanzables, buscar los nodos más lejanos
+        # Identificar todos los sumideros (sin arcos salientes)
+        sinks = lt.new_list()
+        for i in range(lt.size(vertices_keys)):
+            node = lt.get_element(vertices_keys, i)
+            if digraph.degree(mov_graph, node) == 0:
+                lt.add_last(sinks, node)
+        
+        # Si no hay sumideros, usar todos los nodos como posibles destinos
         if lt.size(sinks) == 0:
-            # Encontrar todos los nodos alcanzables
             for i in range(lt.size(vertices_keys)):
-                key = lt.get_element(vertices_keys, i)
-                if bfs_algos.has_path_to_bfs(key, visited_map) and key != punto_origen:
-                    lt.add_last(sinks, key)
+                lt.add_last(sinks, lt.get_element(vertices_keys, i))
         
-        # Encontrar rutas desde el origen a cada sumidero/destino
+        # Para cada fuente, encontrar rutas hacia todos los sumideros
         routes = []
         
-        for j in range(lt.size(sinks)):
-            sink = lt.get_element(sinks, j)
+        for i in range(lt.size(sources)):
+            source = lt.get_element(sources, i)
             
-            if bfs_algos.has_path_to_bfs(sink, visited_map):
-                path_stack = bfs_algos.path_to_bfs(sink, visited_map)
+            # Usar BFS desde esta fuente
+            visited_map = bfs_algos.bfs(mov_graph, source)
+            
+            # Encontrar rutas hacia cada sumidero alcanzable
+            for j in range(lt.size(sinks)):
+                sink = lt.get_element(sinks, j)
                 
-                # Convertir stack a lista
-                path = []
-                while not stack.is_empty(path_stack):
-                    path.append(stack.pop(path_stack))
-                
-                # === OBTENER INFORMACIÓN DE LA RUTA ===
-                route_info = {
-                    "total_points": len(path),
-                    "origin": path[0] if len(path) > 0 else None,
-                    "destination": path[-1] if len(path) > 0 else None,
-                    "path_details": [],
-                    "cranes": set(),
-                    "total_distance": 0.0
-                }
-                
-                # Recopilar información de cada punto
-                for idx, node_id in enumerate(path):
-                    info = digraph.get_vertex_information(mov_graph, node_id)
+                if sink != source and bfs_algos.has_path_to_bfs(sink, visited_map):
+                    path_stack = bfs_algos.path_to_bfs(sink, visited_map)
                     
-                    if info:
-                        lat = lt.get_element(info, 0)
-                        lon = lt.get_element(info, 1)
-                        timestamp = lt.get_element(info, 2)
-                        cranes_list = lt.get_element(info, 3)
-                        events_count = lt.size(lt.get_element(info, 4))
-                        water_dist = lt.get_element(info, 5)
+                    # Convertir stack a lista
+                    path = []
+                    while not stack.is_empty(path_stack):
+                        path.append(stack.pop(path_stack))
+                    
+                    # === OBTENER INFORMACIÓN DE LA RUTA ===
+                    route_info = {
+                        "total_points": len(path),
+                        "origin": path[0] if len(path) > 0 else None,
+                        "destination": path[-1] if len(path) > 0 else None,
+                        "path_details": [],
+                        "cranes": set(),
+                        "total_distance": 0.0
+                    }
+                    
+                    # Recopilar información de cada punto
+                    for idx, node_id in enumerate(path):
+                        info = digraph.get_vertex_information(mov_graph, node_id)
                         
-                        # Recolectar grullas únicas
-                        for k in range(lt.size(cranes_list)):
-                            crane_id = lt.get_element(cranes_list, k)
-                            route_info["cranes"].add(crane_id)
-                        
-                        node_detail = {
-                            "id": node_id,
-                            "position": (lat, lon),
-                            "timestamp": timestamp,
-                            "cranes_count": lt.size(cranes_list),
-                            "cranes_list": [lt.get_element(cranes_list, k) for k in range(lt.size(cranes_list))],
-                            "events_count": events_count,
-                            "water_distance": water_dist
-                        }
-                        
-                        # Calcular distancia al siguiente nodo si existe
-                        if idx < len(path) - 1:
-                            next_node = path[idx + 1]
-                            vertex_obj = digraph.get_vertex(mov_graph, node_id)
-                            if vertex_obj:
-                                adjacents_map = vx.get_adjacents(vertex_obj)
-                                edge_to_next = mp.get(adjacents_map, next_node)
-                                if edge_to_next:
-                                    distance = edg.weight(edge_to_next)
-                                    node_detail["distance_to_next"] = distance
-                                    route_info["total_distance"] += distance
-                        
-                        route_info["path_details"].append(node_detail)
-                
-                route_info["total_cranes"] = len(route_info["cranes"])
-                route_info["cranes"] = list(route_info["cranes"])
-                
-                routes.append(route_info)
+                        if info:
+                            lat = lt.get_element(info, 0)
+                            lon = lt.get_element(info, 1)
+                            timestamp = lt.get_element(info, 2)
+                            cranes_list = lt.get_element(info, 3)
+                            events_count = lt.size(lt.get_element(info, 4))
+                            water_dist = lt.get_element(info, 5)
+                            
+                            # Recolectar grullas únicas
+                            for k in range(lt.size(cranes_list)):
+                                crane_id = lt.get_element(cranes_list, k)
+                                route_info["cranes"].add(crane_id)
+                            
+                            node_detail = {
+                                "id": node_id,
+                                "position": (lat, lon),
+                                "timestamp": timestamp,
+                                "cranes_count": lt.size(cranes_list),
+                                "cranes_list": [lt.get_element(cranes_list, k) for k in range(lt.size(cranes_list))],
+                                "events_count": events_count,
+                                "water_distance": water_dist
+                            }
+                            
+                            # Calcular distancia al siguiente nodo si existe
+                            if idx < len(path) - 1:
+                                next_node = path[idx + 1]
+                                vertex_obj = digraph.get_vertex(mov_graph, node_id)
+                                if vertex_obj:
+                                    adjacents_map = vx.get_adjacents(vertex_obj)
+                                    edge_to_next = mp.get(adjacents_map, next_node)
+                                    if edge_to_next:
+                                        distance = edg.weight(edge_to_next)
+                                        node_detail["distance_to_next"] = distance
+                                        route_info["total_distance"] += distance
+                            
+                            route_info["path_details"].append(node_detail)
+                    
+                    route_info["total_cranes"] = len(route_info["cranes"])
+                    route_info["cranes"] = list(route_info["cranes"])
+                    
+                    routes.append(route_info)
         
-        # Ordenar rutas por longitud (de mayor a menor)
-        routes.sort(key=lambda x: x["total_points"], reverse=True)
+        # Convertir lista Python a lista ADT para ordenar
+        routes_adt = lt.new_list()
+        for route in routes:
+            lt.add_last(routes_adt, route)
+        
+        # Función de comparación por longitud (descendente)
+        def compare_routes_desc(route1, route2):
+            if route1["total_points"] > route2["total_points"]:
+                return True
+            return False
+        
+        # Ordenar usando merge_sort
+        routes_ordenadas = lt.merge_sort(routes_adt, compare_routes_desc)
+        
+        # Convertir de vuelta a lista Python
+        routes = []
+        for i in range(lt.size(routes_ordenadas)):
+            routes.append(lt.get_element(routes_ordenadas, i))
         
         result["routes"] = routes
         result["total_rutas"] = len(routes)
@@ -1054,32 +1095,20 @@ def req_5(control, lat_origen, lon_origen, lat_destino, lon_destino, criterio):
         "time": tiempo_total
     }
 
-def req_6(catalog, punto_origen):
+def req_6(catalog):
     """
     REQ. 6: Identifica posibles subredes hídricas (subgrafos o subconjuntos) 
     dentro del nicho biológico para identificar grupos de individuos (grullas) aislados.
     
-    Parámetros de entrada:
-    - Nicho biológico de los individuos representado por el grafo con todos los 
-      puntos migratorios con respecto a las fuentes hídricas.
-    - punto_origen: Identificador del punto migratorio desde donde se inicia el análisis
+    NO requiere parámetro de entrada - busca automáticamente todas las subredes
     
     :param catalog: Catálogo con los grafos (contiene el nicho biológico)
-    :param punto_origen: ID del punto migratorio de origen para iniciar el análisis
     :returns: Diccionario con información de las subredes hídricas identificadas
     """
     start = get_time()
     
     # El nicho biológico es el grafo de recursos hídricos (fuentes hídricas)
     water_graph = catalog["recursos_hidricos"]
-    
-    # Verificar si el punto de origen existe
-    if not digraph.contains_vertex(water_graph, punto_origen):
-        return {
-            "error": True,
-            "message": f"El punto migratorio '{punto_origen}' no existe en el grafo",
-            "time": delta_time(start, get_time())
-        }
     
     # Verificar que el grafo tenga nodos
     if digraph.order(water_graph) == 0:
@@ -1111,7 +1140,7 @@ def req_6(catalog, punto_origen):
     # Lista para almacenar las subredes
     subredes = []
     
-    # Recorrer todos los nodos del grafo
+    # Recorrer todos los nodos del grafo para encontrar componentes conectados
     for i in range(lt.size(vertices_keys)):
         origen = lt.get_element(vertices_keys, i)
         
@@ -1190,8 +1219,24 @@ def req_6(catalog, punto_origen):
                 
                 subred_info["nodos"].append(node_data)
         
-        # Ordenar nodos por timestamp para obtener primeros y últimos
-        subred_info["nodos"].sort(key=lambda x: x["timestamp"])
+        # Convertir a lista ADT para usar merge_sort
+        nodos_adt = lt.new_list()
+        for nodo in subred_info["nodos"]:
+            lt.add_last(nodos_adt, nodo)
+        
+        # Función de comparación por timestamp
+        def compare_by_timestamp(nodo1, nodo2):
+            if nodo1["timestamp"] < nodo2["timestamp"]:
+                return True
+            return False
+        
+        # Ordenar usando merge_sort
+        nodos_ordenados = lt.merge_sort(nodos_adt, compare_by_timestamp)
+        
+        # Convertir de vuelta a lista Python
+        subred_info["nodos"] = []
+        for i in range(lt.size(nodos_ordenados)):
+            subred_info["nodos"].append(lt.get_element(nodos_ordenados, i))
         
         # Obtener primeros 3 y últimos 3
         total_nodos = len(subred_info["nodos"])
@@ -1210,9 +1255,14 @@ def req_6(catalog, punto_origen):
         
         result["subredes"].append(subred_info)
     
-    # Ordenar subredes por cantidad de puntos (de mayor a menor)
+    # Ordenar subredes por cantidad de puntos (de mayor a menor) - LA MÁS GRANDE PRIMERO
     result["subredes"].sort(key=lambda x: x["total_puntos"], reverse=True)
     result["total_subredes"] = len(result["subredes"])
+    
+    # Identificar la subred más grande
+    if len(result["subredes"]) > 0:
+        result["subred_mas_grande"] = result["subredes"][0]["id"]
+        result["puntos_subred_mas_grande"] = result["subredes"][0]["total_puntos"]
     
     end = get_time()
     result["time"] = delta_time(start, end)
