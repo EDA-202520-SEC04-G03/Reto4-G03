@@ -71,6 +71,14 @@ def degree(my_graph, key_u):
 
     return vertex.degree(vertex_u)
 
+def get_edge(my_graph, key_u, key_v):
+    
+    vertex_u = get_vertex(my_graph, key_u)
+    if vertex_u is None:
+        raise Exception("El vertice u no existe")
+
+    return vertex.get_edge(vertex_u, key_v)
+
 def adjacents(my_graph, key_u):
     vertex_u = get_vertex(my_graph, key_u)
     if vertex_u is None:

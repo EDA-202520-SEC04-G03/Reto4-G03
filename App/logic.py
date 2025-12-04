@@ -13,6 +13,7 @@ from DataStructures.Graph import vertex as vx
 from DataStructures.Graph import edge as edg
 from DataStructures.Stack import stack 
 from DataStructures.Graph import dijkstra as dij
+from DataStructures.Priority_queue import priority_queue as pq
 
 
 csv.field_size_limit(2147483647)
@@ -125,6 +126,85 @@ def get_closest_node(graph, target_lat, target_lon):
             
     return closest_id, min_dist
 # Funciones para la carga de datos
+
+
+def prim_mst_from_source(graph, source):
+    """
+    Ejecuta Prim desde un vértice fuente sobre un grafo dirigido (lo tratamos
+    como no dirigido para efectos del MST, usando los pesos de las aristas salientes).
+    Retorna:
+      - parent: mapa hijo -> padre
+      - key: mapa vertice -> peso del arco con el que entra al MST
+      - visit_order: lista (Python) con el orden en el que se van añadiendo vértices
+    """
+    vertices = digraph.vertices(graph)
+    n = lt.size(vertices)
+
+    if n == 0:
+        return None, None, []
+
+    # Mapas auxiliares
+    visited = mp.new_map(n, 0.5)
+    key = mp.new_map(n, 0.5)
+    parent = mp.new_map(n, 0.5)
+
+    # Inicialización
+    i = 0
+    while i < n:
+        v = lt.get_element(vertices, i)
+        mp.put(visited, v, False)
+        mp.put(key, v, float("inf"))
+        mp.put(parent, v, None)
+        i += 1
+
+    # Cola de prioridad (min-heap)
+    heap = pq.new_heap()
+    mp.put(key, source, 0.0)
+    pq.insert(heap, 0.0, source)
+
+    visit_order = []
+
+    # Bucle principal de Prim
+    while not pq.is_empty(heap):
+        entry = pq.del_min(heap)
+        u = entry["key"]   
+
+        # Si ya fue visitado, lo ignoramos
+        if mp.get(visited, u):
+            continue
+
+        mp.put(visited, u, True)
+        visit_order.append(u)
+
+        # Obtener adyacentes de u
+        vertex_obj = digraph.get_vertex(graph, u)
+        if vertex_obj is None:
+            continue
+
+        adj_map = vx.get_adjacents(vertex_obj)
+        adj_keys = mp.key_set(adj_map)
+        size_adj = lt.size(adj_keys)
+
+        j = 0
+        while j < size_adj:
+            v = lt.get_element(adj_keys, j)
+            edge_uv = mp.get(adj_map, v)
+
+            if edge_uv is not None:
+                w = edg.to(edge_uv)
+                weight_uv = edg.weight(edge_uv)
+
+                if not mp.get(visited, w):
+                    current_key = mp.get(key, w)
+                    if current_key is None or weight_uv < current_key:
+                        mp.put(key, w, weight_uv)
+                        mp.put(parent, w, u)
+                        pq.insert(heap, weight_uv, w)
+
+            j += 1
+
+    return parent, key, visit_order
+
 
 def load_data(catalog, filename):
     """
@@ -430,17 +510,112 @@ def load_data(catalog, filename):
     return lista_filas, reporte
 # Funciones de consulta sobre el catálogo
 
-def req_1(catalog):
+def req_1(catalog, lat_o, lon_o, lat_d, lon_d, crane_id):
     """
-    Retorna el resultado del requerimiento 1
+    Camino DFS para un individuo entre dos puntos.
+    Usa el grafo de movimientos migratorios y la estructura de vértices
+    creada en load_data (lista ADT con índices fijos).
     """
-    # TODO: Modificar el requerimiento 1
-    pass
+
+    graph = catalog["mov_migratorios"]
+
+    # 1. Encontrar nodos más cercanos al origen y destino
+    node_o, _ = get_closest_node(graph, lat_o, lon_o)
+    node_d, _ = get_closest_node(graph, lat_d, lon_d)
+
+    if node_o is None or node_d is None:
+        return {
+            "error": True,
+            "message": "No se encontraron nodos cercanos a las coordenadas dadas."
+        }
+
+    # 2. Ejecutar DFS desde el nodo origen
+    visited = dfs.dfs(graph, node_o)
+
+    # 3. Verificar si existe un camino hacia el nodo destino
+    if not dfs.has_path_to(node_d, visited):
+        return {
+            "error": True,
+            "message": "No existe camino DFS entre los puntos dados.",
+            "origin_node": node_o,
+            "dest_node": node_d
+        }
+
+    # 4. Reconstruir el camino DFS completo (lista Python de ids de nodos)
+    path = dfs.path_to(node_d, visited)
+
+    # 5. Recorrer el camino: calcular distancia total y primer nodo con la grulla
+    total_distance = 0.0
+    first_node_with_crane = None
+
+    path_len = len(path)
+    nodes_info = []
+
+    for i in range(path_len):
+        node_id = path[i]
+        info = digraph.get_vertex_information(graph, node_id)
+
+        # info es una lista ADT (lt) con la estructura:
+        # 0: lat, 1: lon, 2: timestamp, 3: lista grullas, 4: eventos, 5: dist_agua_prom
+        lat = lt.get_element(info, 0)
+        lon = lt.get_element(info, 1)
+        cranes_adt = lt.get_element(info, 3)
+
+        # Pasar grullas a lista Python
+        cranes_py = []
+        size_cranes = lt.size(cranes_adt)
+        j = 0
+        while j < size_cranes:
+            cranes_py.append(lt.get_element(cranes_adt, j))
+            j += 1
+
+        # Verificar si la grulla aparece en este nodo (solo marcamos el primero)
+        if first_node_with_crane is None:
+            # Usamos is_present con cmp_function, como en load_data
+            pos = lt.is_present(cranes_adt, crane_id, cmp_function)
+            if pos != -1:
+                first_node_with_crane = node_id
+
+        # Distancia al siguiente nodo (si existe)
+        next_dist = None
+        if i < path_len - 1:
+            next_edge = digraph.get_edge(graph, node_id, path[i + 1])
+            if next_edge is not None:
+                next_dist = next_edge["weight"]
+                total_distance += next_dist
+
+        # Construir registro para la tabla
+        nodo_dict = {
+            "id": node_id,
+            "lat": lat,
+            "lon": lon,
+            "num_cranes": len(cranes_py),
+            "cranes_first": cranes_py[:3],
+            "cranes_last": cranes_py[-3:],
+            "dist_to_next": next_dist
+        }
+        nodes_info.append(nodo_dict)
+
+    # 6. Primeros 5 y últimos 5 nodos del camino
+    primeros = nodes_info[:5]
+    ultimos = nodes_info[-5:]
+
+    # 7. Retorno final (alineado con el view que armamos)
+    return {
+        "error": False,
+        "origin_node": node_o,
+        "dest_node": node_d,
+        "first_node_with_crane": first_node_with_crane,
+        "path_length": len(path),
+        "total_distance": total_distance,
+        "first_nodes": primeros,
+        "last_nodes": ultimos
+    }
 
 
 def req_2(control, lat_origen, lon_origen, lat_destino, lon_destino, radio_km):
     """
-    Retorna el resultado del requerimiento 4
+    Retorna el resultado del requerimiento 2
     """
     start = get_time()
     
@@ -679,12 +854,118 @@ def req_3(catalog, punto_origen):
     return result
 
 
-def req_4(catalog):
+def req_4(catalog, lat_origen, lon_origen):
     """
-    Retorna el resultado del requerimiento 4
+    REQ. 4: Construye un corredor hídrico óptimo (MST con Prim)
+    a partir del punto hídrico más cercano a unas coordenadas dadas.
+
     """
-    # TODO: Modificar el requerimiento 4
-    pass
+    start = get_time()
+
+    graph = catalog["recursos_hidricos"]
+
+    # Verificar que el grafo no esté vacío
+    if digraph.order(graph) == 0:
+        return {
+            "error": True,
+            "message": "El grafo de recursos hídricos está vacío.",
+            "time": delta_time(start, get_time())
+        }
+
+    # Encontrar nodo hídrico más cercano al origen
+    origin_node, _ = get_closest_node(graph, lat_origen, lon_origen)
+
+    if origin_node is None:
+        return {
+            "error": True,
+            "message": "No se encontró un punto hídrico cercano a las coordenadas dadas.",
+            "time": delta_time(start, get_time())
+        }
+
+    # Ejecutar Prim desde el nodo origen
+    parent, key, visit_order = prim_mst_from_source(graph, origin_node)
+
+    if parent is None:
+        return {
+            "error": True,
+            "message": "No fue posible construir el corredor hídrico.",
+            "time": delta_time(start, get_time())
+        }
+
+    # Procesar resultados del MST
+    total_distance = 0.0
+    all_cranes = set()
+    nodes_info = []
+
+    size_visit = len(visit_order)
+    i = 0
+    while i < size_visit:
+        node_id = visit_order[i]
+        info = digraph.get_vertex_information(graph, node_id)
+
+        if info is not None:
+            lat = lt.get_element(info, 0)
+            lon = lt.get_element(info, 1)
+            cranes_adt = lt.get_element(info, 3)
+
+            # Convertir lista ADT de grullas a lista Python
+            cranes_py = []
+            size_cranes = lt.size(cranes_adt)
+            j = 0
+            while j < size_cranes:
+                crane = lt.get_element(cranes_adt, j)
+                cranes_py.append(crane)
+                all_cranes.add(crane)
+                j += 1
+
+            # Peso del arco con el que este nodo entra al MST
+            edge_weight = key and mp.get(key, node_id)
+            if edge_weight is None:
+                edge_weight = 0.0
+
+            node_dict = {
+                "id": node_id,
+                "lat": lat,
+                "lon": lon,
+                "num_cranes": len(cranes_py),
+                "cranes_first": cranes_py[:3],
+                "cranes_last": cranes_py[-3:],
+                "edge_weight": edge_weight
+            }
+            nodes_info.append(node_dict)
+
+        i += 1
+
+    # Distancia total del corredor (suma de key[v] excepto origen)
+    k = 0
+    while k < size_visit:
+        v_id = visit_order[k]
+        if v_id != origin_node:
+            edge_w = mp.get(key, v_id)
+            if edge_w is not None and edge_w != float("inf"):
+                total_distance += edge_w
+        k += 1
+
+    total_points = len(nodes_info)
+    total_individuals = len(all_cranes)
+
+    # Primeros y últimos 5 nodos del corredor
+    first_nodes = nodes_info[:5]
+    last_nodes = nodes_info[-5:]
+
+    end = get_time()
+    tiempo = delta_time(start, end)
+
+    return {
+        "error": False,
+        "origin_node": origin_node,
+        "total_points": total_points,
+        "total_individuals": total_individuals,
+        "total_distance": total_distance,
+        "first_nodes": first_nodes,
+        "last_nodes": last_nodes,
+        "time": tiempo
+    }
 
 
 def req_5(control, lat_origen, lon_origen, lat_destino, lon_destino, criterio):

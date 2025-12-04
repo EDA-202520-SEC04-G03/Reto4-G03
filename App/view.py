@@ -104,12 +104,139 @@ def print_data(control, id):
     #TODO: Realizar la función para imprimir un elemento
     pass
 
+def format_row_req_1(item):
+    
+    punto_id = item["id"]
+    if len(punto_id) > 20:
+        punto_id = punto_id[:20] + "..."
+
+    posicion = f"({item['lat']:.3f}, {item['lon']:.3f})"
+    num_cranes = item.get("num_cranes", 0)
+
+    cranes_first = item.get("cranes_first", [])
+    cranes_last = item.get("cranes_last", [])
+
+    if len(cranes_first) == 0:
+        first_str = "[]"
+    else:
+        first_str = ", ".join(cranes_first)
+
+    if len(cranes_last) == 0:
+        last_str = "[]"
+    else:
+        last_str = ", ".join(cranes_last)
+
+    dist_next = item.get("dist_to_next", None)
+    if isinstance(dist_next, (int, float)):
+        dist_str = f"{dist_next:.3f}"
+    else:
+        dist_str = "N/A"
+
+    return [punto_id, posicion, num_cranes, first_str, last_str, dist_str]
+
+
+def format_row_req_4(item):
+    
+    punto_id = item["id"]
+    if len(punto_id) > 20:
+        punto_id = punto_id[:20] + "..."
+
+    posicion = f"({item['lat']:.3f}, {item['lon']:.3f})"
+    num_cranes = item.get("num_cranes", 0)
+
+    cranes_first = item.get("cranes_first", [])
+    cranes_last = item.get("cranes_last", [])
+
+    if len(cranes_first) == 0:
+        first_str = "[]"
+    else:
+        first_str = ", ".join(cranes_first)
+
+    if len(cranes_last) == 0:
+        last_str = "[]"
+    else:
+        last_str = ", ".join(cranes_last)
+
+    edge_weight = item.get("edge_weight", None)
+    if isinstance(edge_weight, (int, float)):
+        edge_str = f"{edge_weight:.3f}"
+    else:
+        edge_str = "N/A"
+
+    return [punto_id, posicion, num_cranes, first_str, last_str, edge_str]
+
 def print_req_1(control):
     """
         Función que imprime la solución del Requerimiento 1 en consola
     """
-    # TODO: Imprimir el resultado del requerimiento 1
-    pass
+    print("\n" + "="*80)
+    print(" REQ. 1: RUTA DFS DE UN INDIVIDUO ENTRE DOS PUNTOS")
+    print("="*80)
+
+    # Entradas
+    print("\nIngrese coordenadas de ORIGEN:")
+    lat_o = float(input(" Latitud: "))
+    lon_o = float(input(" Longitud: "))
+
+    print("\nIngrese coordenadas de DESTINO:")
+    lat_d = float(input(" Latitud: "))
+    lon_d = float(input(" Longitud: "))
+
+    crane_id = input("\nIngrese el identificador (tag) de la grulla: ").strip()
+
+    print("\nBuscando camino con DFS para la grulla seleccionada...\n")
+
+    # Llamada a la lógica
+    result = logic.req_1(control, lat_o, lon_o, lat_d, lon_d, crane_id)
+
+    if result.get("error"):
+        print(f" Error: {result['message']}")
+        return
+
+    # Resumen general
+    print(f"Nodo origen más cercano: {result['origin_node']}")
+    print(f"Nodo destino más cercano: {result['dest_node']}")
+    print(f"Longitud del camino (número de puntos): {result['path_length']}")
+    print(f"Distancia total del camino: {result['total_distance']:.3f} km")
+
+    first_node_with_crane = result.get("first_node_with_crane")
+    if first_node_with_crane is None:
+        print(f"La grulla '{crane_id}' NO aparece en ningún punto del camino DFS.")
+    else:
+        print(f"Primer nodo del camino donde aparece la grulla '{crane_id}': {first_node_with_crane}")
+
+    print("\n" + "-"*80)
+    print("Detalle de los primeros 5 y últimos 5 puntos del camino DFS")
+    print("-"*80 + "\n")
+
+    first_nodes = result.get("first_nodes", [])
+    last_nodes = result.get("last_nodes", [])
+
+    headers = [
+        "ID Punto",
+        "Posición (lat, lon)",
+        "# Grullas",
+        "3 primeras grullas",
+        "3 últimas grullas",
+        "Dist. sig. (km)"
+    ]
+    rows = []
+
+    # Agregar primeros 5
+    for item in first_nodes:
+        rows.append(format_row_req_1(item))
+
+    # Separador si hay camino largo
+    path_length = result.get("path_length", 0)
+    if path_length > 10 and len(first_nodes) > 0 and len(last_nodes) > 0:
+        rows.append(["...", "...", "...", "...", "...", "..."])
+
+    # Agregar últimos 5
+    for item in last_nodes:
+        rows.append(format_row_req_1(item))
+
+    print(tabulate(rows, headers=headers, tablefmt="psql"))
+    print()
 
 def format_row(item):
     grullas_str = str(item['grullas'][:3]) if len(item['grullas']) > 3 else str(item['grullas'])
@@ -328,8 +455,63 @@ def print_req_4(control):
     """
         Función que imprime la solución del Requerimiento 4 en consola
     """
-    # TODO: Imprimir el resultado del requerimiento 4
-    pass
+    print("\n" + "="*80)
+    print(" REQ. 4: CORREDOR HÍDRICO ÓPTIMO (MST CON PRIM)")
+    print("="*80)
+
+    # Entradas
+    print("\nIngrese coordenadas cercanas a una FUENTE HÍDRICA:")
+    lat_o = float(input(" Latitud: "))
+    lon_o = float(input(" Longitud: "))
+
+    print("\nConstruyendo corredor hídrico óptimo con Prim...\n")
+
+    # Llamada a la lógica
+    result = logic.req_4(control, lat_o, lon_o)
+
+    if result.get("error"):
+        print(f" Error: {result['message']}")
+        return
+
+    # Resumen general
+    print(f"Punto hídrico de origen más cercano: {result['origin_node']}")
+    print(f"Total de puntos en el corredor hídrico (MST): {result['total_points']}")
+    print(f"Total de individuos (grullas) que usan el corredor: {result['total_individuals']}")
+    print(f"Distancia total del corredor (suma de pesos MST): {result['total_distance']:.3f} km")
+    print(f"Tiempo de ejecución: {result['time']:.2f} ms")
+
+    print("\n" + "-"*80)
+    print("Detalle de los primeros 5 y últimos 5 puntos del corredor hídrico")
+    print("-"*80 + "\n")
+
+    first_nodes = result.get("first_nodes", [])
+    last_nodes = result.get("last_nodes", [])
+
+    headers = [
+        "ID Punto",
+        "Posición (lat, lon)",
+        "# Grullas",
+        "3 primeras grullas",
+        "3 últimas grullas",
+        "Peso arista MST (km)"
+    ]
+    rows = []
+
+    # Primeros 5
+    for item in first_nodes:
+        rows.append(format_row_req_4(item))
+
+    # Separador si el MST es largo
+    total_points = result.get("total_points", 0)
+    if total_points > 10 and len(first_nodes) > 0 and len(last_nodes) > 0:
+        rows.append(["...", "...", "...", "...", "...", "..."])
+
+    # Últimos 5
+    for item in last_nodes:
+        rows.append(format_row_req_4(item))
+
+    print(tabulate(rows, headers=headers, tablefmt="psql"))
+    print()
 
 
 def print_req_5(control):

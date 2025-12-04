@@ -2,7 +2,7 @@ from DataStructures.Map import map_linear_probing as mp
 from DataStructures.List import array_list as al
 from DataStructures.Stack import stack
 from DataStructures.Graph import vertex as vx
-
+from DataStructures.Stack import stack 
 
 def dfs_vertex(my_graph, vertex, visited_map, parent):
     """
@@ -49,7 +49,38 @@ def dfs(my_graph, source):
     visited_map = mp.new_map(num_elements=1000, load_factor=0.5)
 
     # Iniciar la DFS desde el vértice fuente (sin padre)
-    dfs_vertex(my_graph, source, visited_map, None)
+        # Iniciar desde el vértice fuente
+    st = stack.new_stack()
+    stack.push(st, source)
+    mp.put(visited_map, source, {"visited": True, "parent": None})
+
+    # DFS iterativo
+    while not stack.is_empty(st):
+        current = stack.pop(st)
+
+        # Obtener el vértice actual del grafo
+        current_vertex = mp.get(my_graph["vertices"], current)
+        if current_vertex is None:
+            continue
+
+        # Obtener los vértices adyacentes
+        adjacents = vx.get_adjacents(current_vertex)
+        adjacent_keys = mp.key_set(adjacents)
+
+        # Recorrer cada vértice adyacente
+        size_adj = al.size(adjacent_keys)
+        i = 0
+        while i < size_adj:
+            neighbor_key = al.get_element(adjacent_keys, i)
+
+            # Si el vecino no ha sido visitado, marcarlo y apilarlo
+            info = mp.get(visited_map, neighbor_key)
+            if info is None:
+                mp.put(visited_map, neighbor_key, {"visited": True, "parent": current})
+                stack.push(st, neighbor_key)
+
+            i += 1
+
 
     return visited_map
 
